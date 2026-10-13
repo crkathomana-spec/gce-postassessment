@@ -54,9 +54,9 @@ main{padding:40px 48px 120px;min-width:0}
 .scale-key{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;color:var(--muted);margin-top:16px}
 .who{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px;max-width:720px}
 label.f{display:block;font-size:15px;font-weight:700}
-input[type=text],textarea{width:100%;margin-top:6px;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
+input[type=text],input[type=email],textarea{width:100%;margin-top:6px;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
 textarea{min-height:110px;resize:vertical}
-input[type=text]:focus,textarea:focus{border-color:var(--cobalt);outline:none;box-shadow:0 0 0 3px var(--cobalt-soft)}
+input[type=text]:focus,input[type=email]:focus,textarea:focus{border-color:var(--cobalt);outline:none;box-shadow:0 0 0 3px var(--cobalt-soft)}
 .section-head{margin:40px 0 8px;max-width:760px}
 .section-head .of{font-size:15px;color:var(--muted)}
 .section-head h2{font-size:clamp(26px,3.4vw,34px);margin-top:4px}
@@ -133,6 +133,7 @@ table.grid input{width:20px;height:20px;accent-color:var(--cobalt);cursor:pointe
         <div class="who">
           <label class="f">Your name<input type="text" id="rName" autocomplete="name"></label>
           <label class="f">Your role at GCE<input type="text" id="rRole"></label>
+          <label class="f">Your email<input type="email" id="rEmail" autocomplete="email" required></label>
         </div>
       </div>
       <form id="form" onsubmit="return false"></form>
@@ -152,7 +153,7 @@ table.grid input{width:20px;height:20px;accent-color:var(--cobalt);cursor:pointe
 
 <script>
 const AREAS31=["Production","Equipment operation","Production software","Pricing","Sales","Marketing","Quality control","Hiring and onboarding","Managing neurodiverse employees"];
-const AREAS44=["Production","Equipment","Quality control","Marketing","Sales / lead generation","Pricing","Staffing","Neurodiverse employment practices","Employee training","Management training","Procurement","Facility logistics","Vendor relationships","Customer relationships","Shipping and fulfillment","Inventory management","Finance and accounting"]; 
+const AREAS44=["Production","Equipment","Quality control","Marketing","Sales / lead generation","Pricing","Staffing","Neurodiverse employment practices","Employee training","Management training","Procurement","Facility logistics","Vendor relationships","Customer relationships","Shipping and fulfillment","Inventory management","Finance and accounting"];
 const DIGITAL22=[
   ["Search engine optimization (SEO)","Getting found on Google, keywords, website rankings"],
   ["Google Business Profile and local listings","Maps listing, reviews, local directories"],
@@ -252,6 +253,7 @@ const SCALE=["Very poor","Poor","Fair","Good","Excellent"];
 const ALLQ=SECTIONS.flatMap(s=>s.groups.flatMap(g=>g[1]));
 const rowLabel=r=>Array.isArray(r)?r[0]:r;
 const rowDesc=r=>Array.isArray(r)?r[1]:"";
+const slugify=s=>String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 let answers={}, current=0, status="draft";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
@@ -320,26 +322,60 @@ $("form").addEventListener("input",e=>{
   }
   renderNav(); queueSave();
 });
-["rName","rRole"].forEach(id=>$(id).addEventListener("input",queueSave));
+["rName","rRole","rEmail"].forEach(id=>$(id).addEventListener("input",queueSave));
 const SUBMIT_URL = "https://formspree.io/f/xaeqpdwe";
 const STORE_KEY = "gce-partnership-survey-v1";
 let timer=null;
 function setSave(msg){$("saveState").textContent=msg;$("topSave").textContent=msg;}
 function queueSave(){setSave("Unsaved changes");clearTimeout(timer);timer=setTimeout(saveLocal,600);}
 function saveLocal(){
-  try{localStorage.setItem(STORE_KEY,JSON.stringify({answers,name:$("rName").value,role:$("rRole").value,status,current}));setSave("Saved in this browser");}
+  try{localStorage.setItem(STORE_KEY,JSON.stringify({answers,name:$("rName").value,role:$("rRole").value,email:$("rEmail").value,status,current}));setSave("Saved in this browser");}
   catch(e){setSave("");}
 }
 function showBanner(m){$("banner").textContent=m;$("banner").hidden=false;}
 function flat(){
-  const out={"Name":$("rName").value.trim(),"Role":$("rRole").value.trim(),"Submitted":new Date().toISOString()};
+  const out={"Name":$("rName").value.trim(),"Role":$("rRole").value.trim(),"Email":$("rEmail").value.trim(),"Submitted":new Date().toISOString()};
   for(const q of ALLQ){
     const v=answers["q"+q.n];
-    if(q.type==="grid"){q.rows.forEach(r=>{const L=rowLabel(r);out[`Q${q.n} ${L}`]=(v&&v[L])||";});}
+    if(q.type==="grid"){q.rows.forEach(r=>{const L=rowLabel(r);out[`Q${q.n} ${L}`]=(v&&v[L])||"";});}
     else{out[`Q${q.n} ${q.text}`]=v??"";
       if(q.follow) out[`Q${q.n} follow-up: ${q.follow.text}`]=answers["q"+q.n+"_followup"]||"";}
   }
   return out;
+}
+function buildSubmissionData(){
+  const fd=new FormData();
+  const email=$("rEmail").value.trim();
+  const name=$("rName").value.trim();
+  const role=$("rRole").value.trim();
+  fd.append("name", name);
+  fd.append("role", role);
+  if(email) fd.append("email", email);
+  fd.append("submitted", new Date().toISOString());
+  fd.append("_replyto", email);
+  fd.append("_subject", "GCE Partnership Assessment Submission");
+  fd.append("_next", "thanks.html");
+
+  for(const q of ALLQ){
+    const v=answers["q"+q.n];
+    if(q.type==="grid"){
+      const gridValue=(v&&typeof v==="object")?v:{};
+      q.rows.forEach(r=>{
+        const label=rowLabel(r);
+        const key=`q${q.n}_${slugify(label)}`;
+        const value=gridValue[label]||"";
+        fd.append(key, value);
+        fd.append(`Q${q.n} ${label}`, value);
+      });
+    }else{
+      const value=v??"";
+      fd.append(`q${q.n}`, String(value));
+      if(q.follow && answers["q"+q.n+"_followup"]){
+        fd.append(`q${q.n}_followup`, answers["q"+q.n+"_followup"]);
+      }
+    }
+  }
+  return fd;
 }
 function downloadCSV(){
   const f=flat(), cell=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
@@ -358,7 +394,7 @@ async function submit(){
   }
   const btn=$("next"); btn.disabled=true; btn.textContent="Submitting…";
   try{
-    const fd=new FormData(); for(const [k,v] of Object.entries(flat())) fd.append(k,v);
+    const fd=buildSubmissionData();
     const r=await fetch(SUBMIT_URL,{method:"POST",body:fd,headers:{Accept:"application/json"}});
     if(!r.ok) throw new Error(r.status);
     $("doneNote").textContent="Your answers were sent to Spectrum Designs.";
@@ -371,7 +407,7 @@ async function submit(){
 $("dlCopy").onclick=downloadCSV;
 try{
   const d=JSON.parse(localStorage.getItem(STORE_KEY)||"null");
-  if(d){answers=d.answers||{};$("rName").value=d.name||"";$("rRole").value=d.role||"";status=d.status||"draft";current=Math.min(d.current||0,SECTIONS.length-1);}
+  if(d){answers=d.answers||{};$("rName").value=d.name||"";$("rRole").value=d.role||"";$("rEmail").value=d.email||"";status=d.status||"draft";current=Math.min(d.current||0,SECTIONS.length-1);}
   if(answers.q22!==undefined&&typeof answers.q22!=="object") delete answers.q22;
 }catch(e){}
 render(); setSave(Object.keys(answers).length?"Saved in this browser":"");
